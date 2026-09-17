@@ -4,6 +4,8 @@ import random
 import json
 import os
 import asyncio
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 SERVER_ID = 1549149647476363384
 COUNTING_CHANNEL_ID = 1550160615065129051
@@ -343,6 +345,21 @@ async def on_message(message):
 # =========================
 
 token = os.getenv("BOT_TOKEN")
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is online!")
+
+    def log_message(self, format, *args):
+        return
+
+
+def webserver():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), Handler)
+    server.serve_forever()
 
 if token:
     bot.run(token)
