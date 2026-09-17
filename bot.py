@@ -344,8 +344,31 @@ async def on_message(message):
 # BOT STARTEN
 # =========================
 
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is online!")
+
+    def log_message(self, format, *args):
+        return
+
+def webserver():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), Handler)
+    server.serve_forever()
+
+threading.Thread(target=webserver, daemon=True).start()
+
 token = os.getenv("BOT_TOKEN")
 
+if token:
+    bot.run(token)
+else:
+    print("❌ BOT_TOKEN wurde nicht gesetzt!")
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
