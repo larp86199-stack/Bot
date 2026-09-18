@@ -1,4 +1,5 @@
 import os
+import asyncio
 import json
 import random
 import threading
@@ -94,6 +95,7 @@ flaggen = {
 
 quiz_aktiv = {}
 quiz_antwort = {}
+quiz_timer = {}
 
 
 # =========================
@@ -114,17 +116,63 @@ async def flaggen_quiz(interaction: discord.Interaction):
         )
         return
 
-    flagge, land = random.choice(list(flaggen.items()))
-
     quiz_aktiv[user_id] = True
+    await interaction.response.send_message(
+        "🇺🇳 **Flaggen-Quiz gestartet!**"
+    )
+
+    await sende_naechste_flagge(
+        interaction.channel,
+        user_id,
+        interaction.user
+    )
+
+
+async def sende_naechste_flagge(channel, user_id, user):
+    if user_id not in quiz_aktiv:
+        return
+
+    flagge, land = random.choice(list(flaggen.items()))
     quiz_antwort[user_id] = land.lower()
 
-    await interaction.response.send_message(
+    await channel.send(
         f"🇺🇳 **Flaggen-Quiz**\n\n"
         f"Welche Flagge ist das?\n\n"
         f"# {flagge}\n\n"
-        f"Schreibe deine Antwort in den Chat."
+        f"⏱️ Du hast **30 Sekunden** Zeit!"
     )
+
+    async def timer():
+        try:
+            await asyncio.sleep(30)
+
+            if user_id not in quiz_aktiv:
+                return
+
+            # Nur diese Frage beenden.
+            if quiz_antwort.get(user_id) != land.lower():
+                await channel.send(
+                    f"⏰ **Zeit abgelaufen!**\n"
+                    f"Die richtige Antwort war **{land}**."
+                )
+
+            # Alte Antwort entfernen, bevor die nächste Frage kommt.
+            quiz_antwort.pop(user_id, None)
+
+            # Kleine Pause verhindert eine Nachrichtenserie direkt hintereinander.
+            await asyncio.sleep(1)
+
+            if user_id in quiz_aktiv:
+                await sende_naechste_flagge(channel, user_id, user)
+
+        except asyncio.CancelledError:
+            return
+
+    old_timer = quiz_timer.get(user_id)
+    if old_timer:
+        old_timer.cancel()
+
+    quiz_timer[user_id] = asyncio.create_task(timer())
 
 
 @bot.tree.command(
@@ -143,6 +191,10 @@ async def beenden(interaction: discord.Interaction):
 
     quiz_aktiv.pop(user_id, None)
     quiz_antwort.pop(user_id, None)
+
+    timer = quiz_timer.pop(user_id, None)
+    if timer:
+        timer.cancel()
 
     await interaction.response.send_message(
         "🛑 Dein Flaggen-Quiz wurde beendet."
@@ -717,8 +769,11 @@ async def on_message(message):
                 punkte
             )
 
-            quiz_aktiv.pop(user_id, None)
             quiz_antwort.pop(user_id, None)
+
+            timer = quiz_timer.pop(user_id, None)
+            if timer:
+                timer.cancel()
 
             await message.channel.send(
                 f"✅ **Richtig, "
@@ -727,6 +782,15 @@ async def on_message(message):
                 f"⭐ Du hast jetzt "
                 f"**{punkte[user_id]} Punkte**."
             )
+
+            await asyncio.sleep(1)
+
+            if user_id in quiz_aktiv:
+                await sende_naechste_flagge(
+                    message.channel,
+                    user_id,
+                    message.author
+                )
 
         return
 
